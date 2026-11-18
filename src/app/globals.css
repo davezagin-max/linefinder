@@ -1,0 +1,102 @@
+@import "tailwindcss";
+
+/*
+ * Linefinder theme: a trail map come to life.
+ * Trail colors carry meaning (green = beginner, blue = intermediate,
+ * black = advanced, orange = expert + main CTAs) but are never the only
+ * signal: every skill mark also has a shape (● ■ ◆ ◆◆) and a label.
+ *
+ * Contrast notes: orange and green are used for fills/shapes; text on
+ * them is near-black. Text-colored variants (*-ink) meet WCAG AA on white.
+ */
+@theme {
+  --color-trail-green: #2e9e4f;
+  --color-trail-green-ink: #1f7a3c;
+  --color-trail-blue: #1f6fd1;
+  --color-trail-blue-ink: #1a5fb4;
+  --color-trail-black: #111111;
+  --color-summit: #ff6b2c; /* expert + CTA */
+  --color-summit-ink: #b23f0c;
+  --color-summit-soft: #ffe3d6;
+  --color-snow: #fafcff;
+  --color-glacier: #eaf3fb;
+  --color-glacier-2: #d7e7f6;
+  --color-glacier-3: #c4daef;
+  --color-pine: #1f5f3f;
+  --color-sunset: #ff9f5a;
+  --color-night: #1e3a5f;
+  --color-ink: #111111;
+  --color-ink-soft: #3d4b5c;
+  --color-line: #d5e2ef;
+
+  --font-display: var(--font-fredoka), ui-rounded, system-ui, sans-serif;
+  --font-sans: var(--font-inter), system-ui, sans-serif;
+
+  --radius-card: 1.25rem;
+  --shadow-card: 0 1px 2px rgb(30 58 95 / 0.06), 0 8px 24px -12px rgb(30 58 95 / 0.25);
+  --shadow-chunky: 0 4px 0 0 rgb(17 17 17 / 0.9);
+}
+
+@layer base {
+  html {
+    color-scheme: light;
+  }
+  body {
+    background: var(--color-snow);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3, .font-display {
+    font-family: var(--font-display);
+    letter-spacing: -0.01em;
+  }
+  :focus-visible {
+    outline: 3px solid var(--color-trail-blue);
+    outline-offset: 3px;
+    border-radius: 0.5rem;
+  }
+}
+
+/* Chunky button with a little bounce. */
+@utility btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-full px-6 py-3 font-display text-lg font-semibold
+    transition-transform duration-150 select-none disabled:cursor-not-allowed disabled:opacity-45;
+  &:not(:disabled):hover {
+    transform: translateY(-2px);
+  }
+  &:not(:disabled):active {
+    transform: translateY(2px) scale(0.98);
+  }
+}
+@utility btn-primary {
+  @apply btn bg-summit text-ink;
+  box-shadow: var(--shadow-chunky);
+}
+@utility btn-secondary {
+  @apply btn border-2 border-ink bg-white text-ink;
+}
+@utility btn-ghost {
+  @apply btn bg-transparent text-ink-soft hover:text-ink;
+}
+@utility card {
+  @apply rounded-[var(--radius-card)] border border-line bg-white;
+  box-shadow: var(--shadow-card);
+}
+@utility chip {
+  @apply inline-flex items-center gap-1.5 rounded-full border-2 border-line bg-white px-3.5 py-1.5 text-sm font-medium
+    text-ink-soft transition-colors hover:border-trail-blue;
+}
+@utility field {
+  @apply w-full rounded-xl border-2 border-line bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink-soft/45
+    focus:border-trail-blue focus:outline-none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn,
+  .btn:not(:disabled):hover,
+  .btn:not(:disabled):active {
+    transform: none;
+    transition: none;
+  }
+}

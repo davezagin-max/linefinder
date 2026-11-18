@@ -1,0 +1,4 @@
+{
+  "_comment": "Manual overrides for offers the matcher can't resolve. Key: \"NETWORK:advertiserId:sku\". Value: product slug (brand-model-year). See the unmatched sample in the latest feed_runs row.",
+  "mappings": {}
+}

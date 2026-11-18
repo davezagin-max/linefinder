@@ -1,0 +1,10 @@
+node_modules
+.env
+src/generated
+reports
+.next
+next-env.d.ts
+*.tsbuildinfo
+.DS_Store
+.claude/settings.local.json
+data/imported

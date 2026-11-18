@@ -1,0 +1,37 @@
+# Daily price + image refresh from affiliate feeds.
+# Needs repository secrets: DATABASE_URL, plus one FEED_URL_* secret per feed
+# listed in config/feeds.json (the names must match each feed's "urlEnv").
+name: Refresh prices and images
+
+on:
+  schedule:
+    - cron: "0 9 * * *" # daily, 09:00 UTC (early morning in North America)
+  workflow_dispatch: {}
+
+concurrency:
+  group: refresh-feeds
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      NODE_ENV: production # the mock feed never runs in production
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      # Add one line per real feed, e.g.:
+      # FEED_URL_AVANTLINK_EXAMPLE: ${{ secrets.FEED_URL_AVANTLINK_EXAMPLE }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx prisma generate
+      - name: Refresh prices
+        run: npm run prices:refresh -- --no-mock
+      - name: Import press kits and health-check images
+        run: npm run images:refresh -- --health
+      - name: Data-quality report
+        run: npm run data:check

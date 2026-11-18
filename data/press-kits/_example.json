@@ -1,0 +1,12 @@
+{
+  "brand": "example-brand",
+  "kitName": "Example Brand 2026/27 media kit",
+  "licenseNote": "Summarize the kit's usage terms here, e.g. product images may be used by retail partners to promote the products shown.",
+  "licenseUrl": "https://media.example.com/terms",
+  "allowedHosts": ["media.example.com"],
+  "images": [
+    { "product": "example-brand-model-2025", "url": "https://media.example.com/model/topsheet.jpg", "view": "TOPSHEET", "primary": true },
+    { "product": "example-brand-model-2025", "url": "https://media.example.com/model/base.jpg", "view": "BASE" },
+    { "product": "example-brand-model-2025", "url": "https://media.example.com/model/profile.jpg", "view": "PROFILE" }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "_comment": "Copy to config/feeds.json once you're approved by an advertiser. One entry per advertiser datafeed. Column names below are PLACEHOLDERS: replace them with the exact header names in that advertiser's feed file. urlEnv names an environment variable holding the feed download URL (feed URLs usually contain credentials, so never put them in this file).",
+  "feeds": [
+    {
+      "id": "avantlink-example-retailer",
+      "enabled": false,
+      "network": "AVANTLINK",
+      "advertiserId": "REPLACE_WITH_ADVERTISER_ID",
+      "retailerName": "Example Retailer",
+      "urlEnv": "FEED_URL_AVANTLINK_EXAMPLE",
+      "format": "csv",
+      "gzip": false,
+      "currency": "USD",
+      "columns": {
+        "sku": "REPLACE: SKU column",
+        "name": "REPLACE: product name column",
+        "brand": "REPLACE: brand/manufacturer column",
+        "price": "REPLACE: sale price column",
+        "listPrice": "REPLACE: retail price column",
+        "url": "REPLACE: affiliate buy-link column",
+        "image": "REPLACE: large image URL column",
+        "inStock": "REPLACE: availability column",
+        "size": "REPLACE: size column (optional)",
+        "category": "REPLACE: category column"
+      },
+      "keepIf": ["ski", "snowboard"]
+    }
+  ]
+}

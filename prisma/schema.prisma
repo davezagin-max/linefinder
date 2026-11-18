@@ -1,0 +1,666 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// Ski & Snowboard Recommender — data schema (Stage 1 draft, for review)
+//
+// Design notes
+// • Postgres (arrays, enums, jsonb). Connection URL lives in prisma.config.ts
+//   (Prisma 7 convention), not here.
+// • Every sellable item is a row in `Product` (shared fields + FKs for images,
+//   reviews, prices). Category-specific specs live in 1:1 tables that map to
+//   the requested names: skis, snowboards, ski_bindings, snowboard_bindings,
+//   ski_boots, snowboard_boots.
+// • Per-size specs (length, dims, radius, rider-weight range) live in size
+//   tables, because they change with length and drive the hard size filter.
+// • All money is integer cents; all lengths are mm unless the field says cm.
+// • Feedback/rating loop is NOT built, but RecommendationRun/Item give a
+//   stable target for a future `RecommendationFeedback` table (see bottom).
+// ─────────────────────────────────────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ───────────────────────────── Enums ─────────────────────────────
+
+enum Sport {
+  SKI
+  SNOWBOARD
+}
+
+enum ProductKind {
+  SKI
+  SNOWBOARD
+  SKI_BINDING
+  SNOWBOARD_BINDING
+  SKI_BOOT
+  SNOWBOARD_BOOT
+}
+
+/// Trail-sign ability scale used everywhere (1..4 in the engine).
+enum Ability {
+  BEGINNER // ● green circle
+  INTERMEDIATE // ■ blue square
+  ADVANCED // ◆ black diamond
+  EXPERT // ◆◆ double black
+}
+
+enum SkiCategory {
+  FRONTSIDE // < ~88mm, groomer-focused
+  ALL_MOUNTAIN // ~88–100mm
+  ALL_MOUNTAIN_WIDE // ~100–108mm
+  POWDER // 108mm+
+  FREESTYLE_PARK
+  FREERIDE_BIG_MOUNTAIN
+  TOURING
+}
+
+enum SnowboardCategory {
+  ALL_MOUNTAIN
+  FREESTYLE_PARK
+  FREERIDE
+  POWDER_SURF
+  SPLITBOARD
+}
+
+enum SkiRocker {
+  FULL_CAMBER
+  TIP_ROCKER_CAMBER // rocker / camber
+  TIP_TAIL_ROCKER_CAMBER // rocker / camber / rocker
+  FULL_ROCKER
+  FLAT_ROCKER
+}
+
+enum BoardProfile {
+  CAMBER
+  HYBRID_CAMBER // camber between feet, rocker at contacts
+  HYBRID_ROCKER // rocker between feet, camber underfoot
+  FLAT_ROCKER
+  FULL_ROCKER
+  FLAT
+}
+
+enum BoardShape {
+  TRUE_TWIN
+  DIRECTIONAL_TWIN
+  DIRECTIONAL
+  TAPERED_DIRECTIONAL
+}
+
+enum TwinTip {
+  NONE
+  EARLY_RISE_TAIL // partial twin
+  FULL_TWIN
+}
+
+enum Laminate {
+  NONE
+  PARTIAL_METAL
+  FULL_METAL // e.g. two sheets Titanal
+  CARBON_FIBERGLASS
+  FIBERGLASS
+}
+
+enum MountStyle {
+  TRADITIONAL // ~ -10cm+ from center
+  PROGRESSIVE // ~ -4 to -9cm
+  CENTERED // ~ 0 to -3cm
+}
+
+enum SoleNorm {
+  ALPINE_ISO5355
+  GRIPWALK
+  WTR
+  TOURING_ISO9523
+  TECH_INSERTS
+}
+
+enum SkiBindingType {
+  ALPINE
+  HYBRID_TOURING // e.g. frame-less hybrid (Shift-style)
+  TECH // pin
+  FRAME
+}
+
+enum InsertPattern {
+  FOUR_X_FOUR
+  TWO_X_FOUR
+  CHANNEL
+}
+
+enum BoardBindingEntry {
+  STRAP
+  REAR_ENTRY
+  STEP_ON
+}
+
+enum BootLacing {
+  TRADITIONAL
+  SPEED_LACE
+  SINGLE_BOA
+  DOUBLE_BOA
+  HYBRID
+}
+
+enum ImageView {
+  BASE
+  TOPSHEET
+  PROFILE
+  DETAIL
+  LIFESTYLE
+}
+
+enum ImageSource {
+  MANUFACTURER_PRESS_KIT
+  AFFILIATE_FEED
+}
+
+enum AffiliateNetwork {
+  AVANTLINK
+  CJ
+  IMPACT
+  RAKUTEN
+  MOCK // dev-only feed until affiliate approval
+}
+
+enum GearCondition {
+  LIKE_NEW
+  GOOD
+  WORN
+  NEEDS_REPLACING
+}
+
+/// What the user wants to do with an item in "My Kit".
+enum GearIntent {
+  KEEP // stays in the quiver; recommendations fill gaps around it
+  REPLACE // find a successor; its likes/dislikes steer the targets
+  UNSURE
+}
+
+// ─────────────────────────── Catalog ───────────────────────────
+
+model Brand {
+  id                    String    @id @default(cuid())
+  slug                  String    @unique
+  name                  String    @unique
+  website               String?
+  /// 0–100 sub-scores; reputationScore = weighted blend (see scoring config)
+  durabilityScore       Int
+  warrantyScore         Int
+  reviewConsensusScore  Int
+  reputationScore       Int
+  warrantyYears         Int?
+  /// True while sub-scores are editorial seed estimates, not researched.
+  reputationIsEstimate  Boolean   @default(true)
+  reputationNotes       String?
+  reputationReviewedAt  DateTime
+  products              Product[]
+
+  @@map("brands")
+}
+
+/// Shared fields for every sellable item. Spec tables hang off this 1:1.
+model Product {
+  id              String       @id @default(cuid())
+  slug            String       @unique
+  kind            ProductKind
+  brandId         String
+  brand           Brand        @relation(fields: [brandId], references: [id])
+  model           String
+  modelYear       Int // season start year: 2026 = "2026/27"
+  /// Same ski carried over unchanged across years → shared lineage lets
+  /// prior-year reviews count (with decay).
+  lineageKey      String?
+  msrpCents       Int
+  womensSpecific  Boolean      @default(false)
+  abilityMin      Ability
+  abilityMax      Ability
+  /// Original short description written by us (never copied).
+  overview        String
+  isPopular       Boolean      @default(false) // feeds "Why not this one?"
+  discontinued    Boolean      @default(false)
+
+  /// Provenance of the spec data: "seed:unverified", "manufacturer:<url>", "feed:<network>"
+  specsSource     String       @default("seed:unverified")
+  /// Set when a human checked specs against the manufacturer. Null → flagged.
+  specsVerifiedAt DateTime?
+
+  /// Cached by the refresh script from review_scores (0–100, shrunk toward
+  /// the category mean). Null = no reviews yet.
+  reviewScoreAgg  Float?
+  reviewCount     Int          @default(0)
+
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  ski             Ski?
+  snowboard       Snowboard?
+  skiBinding      SkiBinding?
+  boardBinding    SnowboardBinding?
+  skiBoot         SkiBoot?
+  boardBoot       SnowboardBoot?
+  images          Image[]
+  reviews         ReviewScore[]
+  prices          RetailerPrice[]
+  ownedBy         OwnedGear[]
+  recItems        RecommendationItem[]
+
+  @@unique([brandId, model, modelYear])
+  @@index([kind, discontinued])
+  @@map("products")
+}
+
+model Ski {
+  productId        String      @id
+  product          Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  category         SkiCategory
+  rocker           SkiRocker
+  /// Flex 1 (noodle) – 10 (plank); normalized by us across brands.
+  flex             Float
+  core             String // e.g. "Poplar/beech"
+  laminate         Laminate
+  twinTip          TwinTip
+  /// Recommended mount, cm from true center (negative = behind center).
+  mountPointCm     Float?
+  mountStyle       MountStyle
+  /// Reference-length dims for the spec table; per-length dims in SkiSize.
+  refTipMm         Int
+  refWaistMm       Int
+  refTailMm        Int
+  refRadiusM       Float
+  refLengthCm      Int
+  sizes            SkiSize[]
+
+  @@index([category])
+  @@index([refWaistMm])
+  @@map("skis")
+}
+
+model SkiSize {
+  id          String @id @default(cuid())
+  skiId       String
+  ski         Ski    @relation(fields: [skiId], references: [productId], onDelete: Cascade)
+  lengthCm    Int
+  tipMm       Int?
+  waistMm     Int
+  tailMm      Int?
+  radiusM     Float?
+  weightG     Int? // per ski
+
+  @@unique([skiId, lengthCm])
+  @@map("ski_sizes")
+}
+
+model Snowboard {
+  productId      String            @id
+  product        Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
+  category       SnowboardCategory
+  profile        BoardProfile
+  shape          BoardShape
+  flex           Float // 1–10
+  core           String
+  laminate       Laminate
+  setbackMm      Int               @default(0)
+  taperMm        Int               @default(0)
+  insertPattern  InsertPattern
+  baseType       String? // "sintered", "extruded"
+  sizes          BoardSize[]
+
+  @@index([category])
+  @@map("snowboards")
+}
+
+model BoardSize {
+  id                 String    @id @default(cuid())
+  boardId            String
+  board              Snowboard @relation(fields: [boardId], references: [productId], onDelete: Cascade)
+  /// Display label, e.g. "158" or "158W"
+  label              String
+  lengthCm           Float
+  waistWidthMm       Int
+  isWide             Boolean   @default(false)
+  effectiveEdgeMm    Int?
+  sidecutRadiusM     Float?
+  /// Manufacturer rider-weight range — primary hard size filter for boards.
+  riderWeightMinKg   Int?
+  riderWeightMaxKg   Int?
+  weightG            Int?
+
+  @@unique([boardId, label])
+  @@map("board_sizes")
+}
+
+model SkiBinding {
+  productId        String          @id
+  product          Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  type             SkiBindingType
+  dinMin           Float
+  dinMax           Float
+  brakeWidthsMm    Int[] // e.g. [85, 100, 115]
+  soleCompat       SoleNorm[]
+  hasWalkMode      Boolean         @default(false)
+  stackHeightMm    Int?
+  weightG          Int? // per binding
+
+  @@map("ski_bindings")
+}
+
+model SnowboardBinding {
+  productId        String            @id
+  product          Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
+  flex             Float // 1–10
+  responsiveness   Float // 1–10
+  entry            BoardBindingEntry
+  mountCompat      InsertPattern[]
+  /// e.g. [{label:"M", usMin:7, usMax:10}] — men's US sizes
+  sizeRanges       Json
+  stepOnSystem     String? // e.g. "Burton Step On" — needs matching boot
+
+  @@map("snowboard_bindings")
+}
+
+model SkiBoot {
+  productId       String     @id
+  product         Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  flex            Int // manufacturer flex index, e.g. 100, 130
+  lastWidthMm     Int // 97–106 typical
+  soleNorm        SoleNorm
+  mondoMin        Float // e.g. 22.0
+  mondoMax        Float // e.g. 32.5
+  hasWalkMode     Boolean    @default(false)
+  heatMoldable    Boolean    @default(true)
+  weightG         Int?
+
+  @@map("ski_boots")
+}
+
+model SnowboardBoot {
+  productId       String       @id
+  product         Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  flex            Float // 1–10
+  lacing          BootLacing
+  usSizeMin       Float
+  usSizeMax       Float
+  wideAvailable   Boolean      @default(false)
+  stepOnSystem    String?
+  /// Reduced-footprint shells help avoid toe/heel drag.
+  reducedFootprint Boolean     @default(false)
+
+  @@map("snowboard_boots")
+}
+
+// ──────────────────────── Reviews / images / prices ────────────────────────
+
+model ReviewSource {
+  id           String        @id @default(cuid())
+  name         String        @unique // e.g. "Blister", "OutdoorGearLab"
+  homepage     String
+  /// 0.5–1.5 multiplier in the aggregate (editorial testing > user stars)
+  credibility  Float         @default(1)
+  /// Seed-only stand-in scores. Excluded from launch; always flagged by checks.
+  isPlaceholder Boolean      @default(false)
+  scores       ReviewScore[]
+
+  @@map("review_sources")
+}
+
+/// Scores + short summarized pros/cons only. Never copied review text.
+model ReviewScore {
+  id                String       @id @default(cuid())
+  productId         String
+  product           Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  sourceId          String
+  source            ReviewSource @relation(fields: [sourceId], references: [id])
+  url               String
+  rawScore          String // as published, e.g. "4.5/5", "87"
+  score             Float // normalized 0–100
+  modelYearReviewed Int
+  reviewedAt        DateTime
+  /// Our own ≤12-word paraphrases
+  pros              String[]
+  cons              String[]
+  retrievedAt       DateTime     @default(now())
+
+  @@unique([productId, sourceId, modelYearReviewed])
+  @@map("review_scores")
+}
+
+model Image {
+  id             String      @id @default(cuid())
+  productId      String
+  product        Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  url            String
+  view           ImageView
+  isPrimary      Boolean     @default(false)
+  sortOrder      Int         @default(0)
+  source         ImageSource
+  sourceName     String // "Völkl press kit 26/27", "AvantLink: <retailer>"
+  licenseNote    String // terms/permission summary + link
+  width          Int?
+  height         Int?
+  lastVerifiedAt DateTime? // set by image health check (HEAD 200)
+  /// Set when the health check fails; the UI skips broken images.
+  brokenSince    DateTime?
+  createdAt      DateTime    @default(now())
+
+  @@unique([productId, url])
+  @@index([productId, isPrimary])
+  @@map("images")
+}
+
+model Retailer {
+  id            String           @id @default(cuid())
+  slug          String           @unique
+  name          String
+  network       AffiliateNetwork
+  advertiserId  String? // ID inside the affiliate network
+  logoUrl       String?
+  active        Boolean          @default(true)
+  prices        RetailerPrice[]
+
+  @@unique([network, advertiserId])
+  @@map("retailers")
+}
+
+/// One run of a price/image feed import, for monitoring.
+model FeedRun {
+  id          String           @id @default(cuid())
+  network     AffiliateNetwork
+  source      String // adapter id, e.g. "mock", "csv:avantlink-evo"
+  startedAt   DateTime         @default(now())
+  finishedAt  DateTime?
+  offers      Int              @default(0)
+  matched     Int              @default(0)
+  unmatched   Int              @default(0)
+  pricesUpserted Int           @default(0)
+  imagesUpserted Int           @default(0)
+  /// Up to ~50 unmatched offer names, for manual mapping.
+  unmatchedSample String[]
+  error       String?
+
+  @@index([network, startedAt])
+  @@map("feed_runs")
+}
+
+model RetailerPrice {
+  id              String   @id @default(cuid())
+  productId       String
+  product         Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  retailerId      String
+  retailer        Retailer @relation(fields: [retailerId], references: [id])
+  /// "" = price applies to all sizes
+  sizeLabel       String   @default("")
+  feedSku         String?
+  priceCents      Int // current selling price (sale price if on sale)
+  listPriceCents  Int?
+  currency        String   @default("USD")
+  inStock         Boolean
+  /// Affiliate deep link from the feed; rendered with rel="sponsored noopener"
+  affiliateUrl    String
+  checkedAt       DateTime // UI hides rows older than 7 days
+
+  @@unique([productId, retailerId, sizeLabel])
+  @@index([productId, checkedAt])
+  @@map("retailer_prices")
+}
+
+// ─────────────────────────── Auth (NextAuth / Auth.js) ───────────────────────────
+
+model User {
+  id             String           @id @default(cuid())
+  name           String?
+  email          String?          @unique
+  emailVerified  DateTime?
+  image          String?
+  createdAt      DateTime         @default(now())
+  accounts       Account[]
+  sessions       Session[]
+  profiles       RiderProfile[]
+  kit            OwnedGear[]
+
+  @@map("users")
+}
+
+model Account {
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@id([identifier, token])
+  @@map("verification_tokens")
+}
+
+// ─────────────────────────── Rider profiles & My Kit ───────────────────────────
+
+/// Saved survey. `answers` is validated by a versioned zod schema
+/// (SurveyAnswersV1); a few columns are denormalized for listing/sorting.
+model RiderProfile {
+  id             String               @id @default(cuid())
+  userId         String
+  user           User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name           String // "Wasatch daily driver"
+  sport          Sport
+  surveyVersion  Int
+  answers        Json
+  regionKey      String
+  ability        Ability
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  runs           RecommendationRun[]
+
+  @@index([userId])
+  @@map("rider_profiles")
+}
+
+/// "My Kit": gear the rider already owns. Works for signed-in users (here)
+/// and guests (same shape kept in client state and sent to the engine).
+/// Either matched to a catalog product, or entered as free text with the
+/// few specs we need (waist/length/flex) so the engine can still use it.
+model OwnedGear {
+  id              String        @id @default(cuid())
+  userId          String
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind            ProductKind
+  productId       String?
+  product         Product?      @relation(fields: [productId], references: [id], onDelete: SetNull)
+  // Free-text fallback when the item isn't in the catalog
+  brandText       String?
+  modelText       String?
+  modelYear       Int?
+  sizeLabel       String? // "184", "158W", "27.5"
+  approxWaistMm   Int? // skis/boards not in catalog
+  approxFlex      Float? // 1–10, user's guess (or boot flex index / 10)
+  soleNorm        SoleNorm? // boots/bindings — compatibility filter
+  brakeWidthMm    Int? // ski bindings
+  purchasedYear   Int?
+  condition       GearCondition @default(GOOD)
+  intent          GearIntent    @default(KEEP)
+  /// Controlled vocab (see GEAR_TRAITS in src/lib/scoring/kit.ts)
+  likes           String[]
+  dislikes        String[]
+  /// Boots only: HEEL_LIFT, TOE_BANG, FOREFOOT_PINCH, SHIN_BANG, COLD_FEET, ...
+  fitIssues       String[]
+  notes           String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([userId, kind])
+  @@map("owned_gear")
+}
+
+// ─────────────────────── Recommendation snapshots ───────────────────────
+
+/// One engine run. Snapshots inputs + engine/weights version so results are
+/// reproducible and a future feedback loop can tie ratings to exact output.
+model RecommendationRun {
+  id              String               @id @default(cuid())
+  profileId       String?
+  profile         RiderProfile?        @relation(fields: [profileId], references: [id], onDelete: SetNull)
+  inputSnapshot   Json // answers + kit as used
+  engineVersion   String
+  weightsVersion  String
+  createdAt       DateTime             @default(now())
+  items           RecommendationItem[]
+
+  @@index([profileId, createdAt])
+  @@map("recommendation_runs")
+}
+
+model RecommendationItem {
+  id             String            @id @default(cuid())
+  runId          String
+  run            RecommendationRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  productId      String
+  product        Product           @relation(fields: [productId], references: [id])
+  /// "main" | "quiver:2:<n>" | "quiver:3:<n>" | "binding" | "boot"
+  slot           String
+  rank           Int
+  totalScore     Float
+  breakdown      Json // per-component contributions
+  recommendedSize String?
+  tags           String[] // STRETCH, BEST_VALUE, LIMITED_REVIEWS, OVERLAPS_KIT
+  // Future: feedback  RecommendationFeedback[]
+
+  @@index([runId, slot, rank])
+  @@map("recommendation_items")
+}
+
+// Future feedback loop (not built):
+// model RecommendationFeedback {
+//   id        String @id @default(cuid())
+//   itemId    String  // → RecommendationItem
+//   userId    String
+//   rating    Int     // 1–5, or "bought" / "not for me"
+//   reasons   String[]
+//   createdAt DateTime @default(now())
+// }
