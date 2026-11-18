@@ -15,7 +15,7 @@ const TABS = [
 
 function SearchForm({ autoFocus = false }: { autoFocus?: boolean }) {
   return (
-    <form action="/search" role="search" className="relative w-full">
+    <form action={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/search/`} role="search" className="relative w-full">
       <label htmlFor="site-search" className="sr-only">
         Search gear
       </label>

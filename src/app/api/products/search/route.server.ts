@@ -1,3 +1,4 @@
+// Named route.server.ts so the static demo build can leave it out (see next.config.ts).
 import { NextResponse, type NextRequest } from "next/server";
 import { searchProducts } from "@/server/catalogCache";
 

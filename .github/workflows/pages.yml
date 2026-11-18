@@ -1,0 +1,52 @@
+# Build the static browser demo and publish it to GitHub Pages:
+#   https://davezagin-max.github.io/linefinder/
+# The demo runs the scoring engine in the browser with the seed catalog and
+# mock prices, so it needs no database or secrets.
+name: Deploy demo to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # prisma.config.ts requires these to exist for `prisma generate` (types only);
+      # the demo never connects to a database.
+      DATABASE_URL: postgres://unused:unused@localhost:5432/unused
+      SHADOW_DATABASE_URL: postgres://unused:unused@localhost:5432/unused
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npm test
+      - run: npm run demo:build
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: out
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

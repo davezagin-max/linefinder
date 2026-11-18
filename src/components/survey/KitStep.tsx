@@ -3,6 +3,7 @@
 import { Check, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { GEAR_TRAITS, type GearTraitKey } from "@/lib/scoring/kit";
+import { searchGear } from "@/lib/client/api";
 import type { KitItemAnswer } from "@/lib/survey/schema";
 import { words } from "@/lib/survey/steps";
 import { ChipToggle, OptionCard, Segmented, StepHeader } from "./controls";
@@ -69,9 +70,9 @@ function ProductCombobox({
     const ctrl = new AbortController();
     const t = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/products/search?q=${encodeURIComponent(value)}&kind=${kind}`, { signal: ctrl.signal });
-        const json = (await res.json()) as { results: SearchResult[] };
-        setResults(json.results);
+        const hits = (await searchGear(value, kind, ctrl.signal)) as SearchResult[];
+        if (ctrl.signal.aborted) return;
+        setResults(hits);
         setOpen(true);
         setActive(-1);
       } catch {

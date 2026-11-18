@@ -47,7 +47,7 @@ const PLACEHOLDER: Record<ProductKind, { file: string; noun: string }> = {
 export function placeholderFor(kind: ProductKind, productName?: string): GalleryImage {
   const p = PLACEHOLDER[kind];
   return {
-    url: `/placeholders/${p.file}.svg`,
+    url: `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/placeholders/${p.file}.svg`,
     alt: `Illustration of ${p.noun}${productName ? ` (photo of the ${productName} coming soon)` : ""}`,
     view: "PLACEHOLDER",
     isPlaceholder: true,

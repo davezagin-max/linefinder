@@ -18,7 +18,9 @@
     "test": "vitest run",
     "prices:refresh": "tsx scripts/refresh-prices.ts",
     "images:refresh": "tsx scripts/refresh-images.ts",
-    "engine:try-db": "tsx scripts/try-engine-db.ts"
+    "engine:try-db": "tsx scripts/try-engine-db.ts",
+    "demo:build": "DEMO_STATIC=1 NEXT_PUBLIC_DEMO=1 NEXT_PUBLIC_BASE_PATH=/linefinder next build",
+    "demo:preview": "node scripts/serve-demo.mjs"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.1",

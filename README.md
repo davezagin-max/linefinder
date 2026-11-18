@@ -1,5 +1,9 @@
 # Linefinder: ski & snowboard recommender
 
+**[Try the live demo →](https://davezagin-max.github.io/linefinder/)**
+
+The demo runs entirely in your browser, using the built-in sample catalog (specs unverified, placeholder review scores) and mock prices from fictional retailers. The full app runs locally with Postgres (see below).
+
 Status: **Stage 4: survey UI.** Stages 1 (schema, seed data, data-quality checks), 2 (scoring engine) and 3 (mock price feed, image pipeline) are also done. The results page is an interim preview until Stage 5. Design notes are in [docs/DESIGN.md](docs/DESIGN.md).
 
 ## Run it locally
@@ -29,6 +33,8 @@ Other commands:
 | `npm run images:refresh -- --health` | Import press-kit images and health-check every stored image URL |
 | `npm run engine:try-db -- wasatch` | Run a sample rider against the database catalog with live feed prices and image fallbacks |
 | `npm run engine:try` | Run the recommendation engine on sample riders against the seed catalog (no database needed) |
+| `npm run demo:build` | Build the static browser demo into `out/` (what GitHub Pages serves) |
+| `npm run demo:preview` | Serve that build at http://localhost:3100/linefinder/ |
 | `npx prisma studio` | Browse the database |
 
 ## Seed data: please read

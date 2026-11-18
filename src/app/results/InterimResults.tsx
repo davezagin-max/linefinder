@@ -14,7 +14,8 @@ import { Snowfall } from "@/components/ui/Snowfall";
 import type { RecommendationResult } from "@/lib/scoring/types";
 import type { SurveyAnswers } from "@/lib/survey/schema";
 import { formatPrice } from "@/lib/pricing/display";
-import type { ProductSummary } from "../api/recommend/route";
+import { getRecommendations } from "@/lib/client/api";
+import type { ProductSummary } from "@/lib/demo/catalog";
 
 type State =
   | { status: "loading" }
@@ -67,10 +68,8 @@ export function InterimResults() {
     }
     setSport(answers.sport);
     const started = Date.now();
-    fetch("/api/recommend", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(answers) })
-      .then(async (res) => {
-        const json = await res.json();
-        if (!res.ok) throw new Error(json.error ?? `HTTP ${res.status}`);
+    getRecommendations(answers)
+      .then((json) => {
         // Let the drop-in animation play for a moment.
         const wait = Math.max(0, 1200 - (Date.now() - started));
         setTimeout(() => setState({ status: "ready", result: json.result, products: json.products, sport: answers.sport }), wait);

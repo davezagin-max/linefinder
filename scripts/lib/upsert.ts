@@ -21,17 +21,8 @@ export const PLACEHOLDER_SOURCE = {
   url: "seed://placeholder",
 };
 
-export function slugify(...parts: (string | number)[]) {
-  return parts
-    .join("-")
-    .normalize("NFKD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
-}
-
-export const productSlug = (s: BaseSeed) => slugify(s.brand, s.model, s.modelYear);
+export { productSlug, slugify } from "../../src/lib/slug";
+import { productSlug } from "../../src/lib/slug";
 
 export async function upsertBrands(db: Db, brands: BrandSeed[], now: Date) {
   for (const b of brands) {
